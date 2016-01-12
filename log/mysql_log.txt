@@ -1,3 +1,5 @@
 
-2016-01-11:14:27:35:
-src/mysqlqq.c 64: connect mysql failed
+2016-01-12:14:55:07:
+src/mysqlqq.c 235: isUserByGag-->mysql_real_connect: connect mysql failed
+2016-01-12:14:55:07:
+src/mysqlqq.c 297: isUserAlreadyResiger-->mysql_real_connect: connect mysql failed.

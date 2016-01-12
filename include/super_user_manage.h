@@ -25,5 +25,16 @@ void sys_log(const char* str);
 */
 int initTcpServer(int* OutSocketFd);
 
+/*函数功能：获取管理员登录的用户名
+参数：str 客户端发过来的字符串
+返回值：0 函数执行成功 1 函数执行失败 */
+int get_name(const char* str, char* name);
+
+/*函数功能：超级用户登录
+参数：
+str 客户端发过来的字符串
+返回值：0 函数执行成功 1 函数执行失败 */
+int root_login(const char* str, int InsocketFd);
+
 
 #endif

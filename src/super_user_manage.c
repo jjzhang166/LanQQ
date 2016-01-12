@@ -57,12 +57,16 @@ int initTcpServer(int* OutSocketFd)
 	struct sockaddr_in stServAddr;
 	int nRet = 0;
 	int isReuse = 1;
+	char errorMsg[ERROR_MSG_LENGTH] = {0};
 
 	/** 产生一个套接口的描数字 */
 	nSocketFd = socket(AF_INET, SOCK_STREAM, 0);
 	if (-1 == nSocketFd)
 	{
-		serverlLOG("initTcpServer-->socket:get the socketfd failed");
+		memset(errorMsg,0,ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"initTcpServer-->socket:get the socketfd failed");
+		serverlLOG(errorMsg);
+		
 		return 1;
 	}
 
@@ -78,8 +82,10 @@ int initTcpServer(int* OutSocketFd)
 	/** 把这个套接字描述符和本地地址绑定起来 */
 	nRet = bind(nSocketFd, (struct sockaddr*)&stServAddr, sizeof(stServAddr));
 	if (-1 == nRet)
-	{
-		serverlLOG("initTcpServer-->bind:bind the socket failed");
+	{	
+		memset(errorMsg,0,ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"initTcpServer-->bind:bind the socket failed");
+		serverlLOG(errorMsg);
 		close(nSocketFd);
 		return 1;
 	}
@@ -91,4 +97,104 @@ int initTcpServer(int* OutSocketFd)
 
 	return 0;
 }
+
+/*函数功能：获取管理员登录的用户名
+参数：str 客户端发过来的字符串
+返回值：0 函数执行成功 1 函数执行失败 */
+int get_name(const char* str, char* name)
+{
+	int i = 0;
+	char name_length[2] = {0};
+	int name_l = 0;
+	
+
+	for (i = 0; i<2; i++)
+	{
+		name_length[i] = *(str + i);
+	}
+	name_l = atoi(name_length);
+
+	for (; i<name_l + 2; i++)
+	{
+		name[i - 2] = *(str + i);
+	}
+	return i;
+	
+	return i;
+}
+
+/*函数功能：超级用户登录
+参数：
+str 客户端发过来的字符串
+返回值：0 函数执行成功 1 函数执行失败 */
+int root_login(const char* str, int InsocketFd)
+{
+	char name[NAME_LENGTH] = { 0 };
+	char passwd[PASSWD_LENGTH] = { 0 };
+	int point = 2, n = 0, a = 0;
+	char szBuff[100] = { 0 };
+	char errorMsg[ERROR_MSG_LENGTH] = {0};
+
+	//printf("str: %s\n", str);
+
+	/* 把超级用户的登录名取出来 */
+	point += get_name((str + point), name);
+	//printf("name:%s\n", name);
+	printf("user %s login !\n\n", name);
+
+	/* 判断是否是超级用户 */
+	IsSuperUser(name, &n);
+
+	if (n == 1)
+	{
+		memset(errorMsg,0,ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"root_login:bu shi chao ji yong hu");
+		serverlLOG(errorMsg);
+		
+		szBuff[0] = '3';
+		szBuff[1] = '0';
+		szBuff[2] = '4';
+		szBuff[3] = '\0';
+		write(InsocketFd, szBuff, 4);
+		return 1;
+	}
+
+	point += get_name((str + point), passwd);
+//	printf("passwd:%s\n", passwd);
+
+	/* 判断登录的密码是否正确 */
+	isSpuerUserPasswordTrue(name, passwd, &a);
+
+	/* 密码正确 */
+	if (a == 0)
+	{
+		szBuff[0] = '3';
+		szBuff[1] = '0';
+		szBuff[2] = '1';
+		szBuff[3] = '\0';
+		write(InsocketFd, szBuff, 4);
+
+		/* 延时200ms */
+
+		usleep(200000);
+		return 0;
+	}
+
+	/* 密码错误 */
+	if (a == 1)
+	{
+		memset(errorMsg,0,ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"root_login:mi ma cuo wu");
+		serverlLOG(errorMsg);
+		
+		szBuff[0] = '3';
+		szBuff[1] = '0';
+		szBuff[2] = '2';
+		szBuff[3] = '\0';
+		write(InsocketFd, szBuff, 4);
+		return 1;
+	}
+	return 0;
+}
+
 

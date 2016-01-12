@@ -1,3 +1,37 @@
 
 
 
+2016-01-12:14:55:07:
+src/normal_server.c 169: In AnalyRegister 执行 isUserAlreadyResiger 失败.
+2016-01-12:15:41:25:
+src/normal_server.c 336: In AnalyLogin 用户名或者密码错误.
+2016-01-12:15:41:31:
+src/normal_server.c 398: In AnalyLogin 回复该用户可以登陆了信息 成功.
+2016-01-12:15:43:36:
+src/normal_server.c 370: In AnalyLogin 该用户已经在线.
+2016-01-12:15:43:36:
+src/normal_server.c 385: In AnalyLogin 回复该用户已在线 信息 成功.
+2016-01-12:15:43:56:
+src/normal_server.c 370: In AnalyLogin 该用户已经在线.
+2016-01-12:15:43:56:
+src/normal_server.c 385: In AnalyLogin 回复该用户已在线 信息 成功.
+2016-01-12:15:44:56:
+src/normal_server.c 394: 用户  qq1 登陆成功了.
+2016-01-12:15:46:09:
+src/normal_server.c 394: 用户  qq1 登陆成功了.
+2016-01-12:15:58:48:
+src/normal_server.c 319: this user name is not exist.
+2016-01-12:15:58:55:
+src/normal_server.c 319: this user name is not exist.
+2016-01-12:15:58:59:
+src/normal_server.c 336: In AnalyLogin 用户名或者密码错误.
+2016-01-12:21:45:15:
+src/normal_server.c 183: In AnalyRegiste 该用户名已注册.
+2016-01-12:21:47:23:
+src/normal_server.c 183: 用户 qq2  已注册.
+2016-01-12:22:16:37:
+src/normal_server.c 183: 用户 qq2  已注册.
+2016-01-12:22:19:38:
+src/normal_server.c 183: 用户 qq2  已注册.
+2016-01-12:22:20:46:
+src/normal_server.c 183: 用户 qq2  已注册.

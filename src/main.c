@@ -17,7 +17,7 @@ void* PthreadReadClientMsg(void* arg)
 	int nSocketFd = *((int*)arg);
 	char errorMsg[ERROR_MSG_LENGTH] = {0};
 	int nReadLen = 0;
-	//int nRet = 0;
+	int nRet = 0;
 	char szBuff[BUFSIZ] = { 0 };
 	char szMode[3] = { 0 };
 	char szCmd[200] = {0};
@@ -47,6 +47,30 @@ void* PthreadReadClientMsg(void* arg)
 		else if (nReadLen > 0)
 		{
 			strncpy(szMode, szBuff, 2);
+			
+			/* 注册用户,消息头为01 */
+			if (strncmp(szMode, "01", 2) == 0)
+			{
+				AnalyRegister(szBuff + 2, nSocketFd);
+			}
+			
+			/* 用户登录,消息头为02 */
+			if (strncmp(szMode, "02", 2) == 0)
+			{
+				AnalyLogin(szBuff + 2, nSocketFd);
+			}
+			
+			/* 超级用户登录,消息头为22 */
+			if (strncmp(szMode, "22", 2) == 0)
+			{
+				nRet = root_login(szBuff, nSocketFd);
+
+				/* 登录成功之后，把所有用户和群发给客户端 */
+				if (nRet == 0)
+				{
+				//	super_send(nSocketFd);
+				}
+			}
 			
 		}
 	}

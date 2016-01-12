@@ -83,3 +83,375 @@ int execCmdToMysql(const char* InExecCmd)
 	return 0;
 }
 
+
+/*函数功能：判断该用户是否是超级用户
+参数：
+InName 输入的用户名
+OutIsSuperUser 返回是否是超级用户 0 是 1 不是
+返回值：0 函数执行成功 1 函数执行失败 */
+int IsSuperUser(const char* InName, int* OutIsSuperUser)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	MYSQL_RES*  result;
+	int nRows = 0;
+	char szCmd[100] = { 0 };
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"connect mysql failed");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT * FROM tbl_super_users WHERE super_name='", InName, "'");
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"exec cmd failed");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 获得查找结果有几行记录 */
+	result = mysql_store_result(&my_connection);
+	nRows = mysql_num_rows(result);
+
+	if (nRows == 0)
+	{
+		/* 不是超级用户 */
+		*OutIsSuperUser = 1;
+	}
+	else
+	{
+		/* 是超级用户 */
+		*OutIsSuperUser = 0;
+	}
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+/*函数功能：判断超级管理员用户的密码是否正确
+参数：InSpuerUserName 输入的用户名
+InPassword 输入的密码
+OutIsTrue 输出是否正确，0 正确 1 错误
+返回值：0 函数执行成功 1 函数执行失败 */
+int isSpuerUserPasswordTrue(const char* InSuperUserName,const char* InPassword, int* OutIsTrue)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"connect mysql failed");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT passwd FROM tbl_super_users WHERE super_name='", InSuperUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"exec cmd failed");
+		mysqlLOG(errorMsg);
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	if ((row = mysql_fetch_row(result)))
+	{
+		if (strncmp(InPassword, row[0], 20) == 0)
+		{
+			/* 密码正确 */
+			*OutIsTrue = 0;
+		}
+		else
+		{
+			/* 密码错误 */
+			*OutIsTrue = 1;
+		}
+	}
+	else
+	{
+		/* 密码错误 */
+		*OutIsTrue = 1;
+	}
+
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+/*函数功能：判断用户是否已结被删除过，删除过就不能再注册了
+参数：InUserName 输入的用户名
+OutIsDelete 输出是否被禁言，0 没有被删除过，1 被删除过
+返回值：0 函数执行成功 1 函数执行失败 */
+int isAlreadyBeDelete(const char* InUserName, int* OutIsDelete)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	int count = 0;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserByGag-->mysql_real_connect: connect mysql failed");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT * FROM tbl_del_users WHERE del_name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserByGag-->mysql_query: exec cmd failed");
+		mysqlLOG(errorMsg);
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	while ((row = mysql_fetch_row(result)))
+	{
+		count++;
+	}
+
+	if (count == 0)
+	{
+		/* 没有被删除过 */
+		*OutIsDelete = 0;
+	}
+	else
+	{
+		/* 被删除过 */
+		*OutIsDelete = 1;
+	}
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+
+
+/*函数功能：根据用户名判断用户是否已经注册过
+参数：InUserName 输入的用户名
+OutIsResiger 输出是否已经注册，0 没有注册，1 已经注册
+返回值：0 函数执行成功 1 函数执行失败 */
+int isUserAlreadyResiger(const char* InUserName, int* OutIsResiger)
+{
+	int nRet = 0;
+	MYSQL_RES*  result;
+	MYSQL my_connection;
+	int nRows = 0;
+	char szCmd[100] = { 0 };
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{		
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserAlreadyResiger-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	sprintf(szCmd, "%s%s%s", "SELECT * FROM tbl_register_users WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserAlreadyResiger-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 获得查找结果有几行记录 */
+	result = mysql_store_result(&my_connection);
+	nRows = mysql_num_rows(result);
+
+	if (nRows == 0)
+	{
+		/* 没有注册 */
+		*OutIsResiger = 0;
+	}
+	else
+	{
+		/* 已经注册 */
+		*OutIsResiger = 1;
+	}
+	/* 关闭数据库连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+/*函数功能：判断用户的密码是否正确
+参数：InUserName 输入的用户名
+InPassword 输入的密码
+OutIsTrue 输出是否正确，0 正确 1 错误
+返回值：0 函数执行成功 1 函数执行失败 */
+int isUserPasswordTrue(const char* InUserName, const char* InPassword, int* OutIsTrue)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserPasswordTrue-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT passwd FROM tbl_register_users WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserPasswordTrue-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		mysql_close(&my_connection);
+		
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+	row = mysql_fetch_row(result);
+
+	if (strncmp(InPassword, row[0], 20) == 0)
+	{
+		/* 密码正确 */
+		*OutIsTrue = 0;
+	}
+	else
+	{
+		/* 密码错误 */
+		*OutIsTrue = 1;
+	}
+
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+
+/*函数功能：根据用户名判断用户是否在线
+参数：InUserName 输入的用户名
+OutIsOnline 输出是否在线，0 没有在线，1 在线
+返回值：0 函数执行成功 1 函数执行失败 */
+int isUserAlreadyOnline(const char* InUserName, int* OutIsOnline)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserAlreadyOnline-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT is_online FROM tbl_register_users WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		mysqlLOG("isUserAlreadyOnline-->mysql_query: exec cmd failed");
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+	row = mysql_fetch_row(result);
+
+	if (row[0][0] == '0')
+	{
+		/* 没有在线 */
+		*OutIsOnline = 0;
+	}
+	else
+	{
+		/* 在线 */
+		*OutIsOnline = 1;
+	}
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+
+
