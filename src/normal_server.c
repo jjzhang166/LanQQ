@@ -677,3 +677,474 @@ int AnalyLogin(const char* buff,int sockfd)
 }
 
 
+/*函数功能：解析了前2个字节判断是要找回密码的信息的信息，根据客户端发送的信息解析出密保正确与否，正确就发送给他密保
+每次return 都要free
+
+接收客户端信息的协议：
+类型（03）  发送方名字长度（2字节）  发送方名字    密保长度（2字节）  密保
+发送给客户端的协议：
+找回成功 131
+找回失败 132
+
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int isSecurietyTrue(char* InUserName,char* Insecuriety,int* OutIsTrue,char* OutPasswd);判断密保是否正确，如果正确直接把密码返回
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Retrieve_psw(const char* buff,const int sockfd)
+{
+	char *username = NULL, *securiety = NULL, *Newpasswd = NULL;
+	char p_username_len[3] = {0}, p_securiety_len[3] = {0}, p_Newpasswd_len[3] = {0};
+	int username_len = 0, securiety_len = 0, Newpasswd_len = 0;
+	int IsTrue = 0;
+	char errorMsg[SERVER_ERROR_MSG_LENGTH] = {0};
+	char szcmd[200] = {0};
+
+	/* 读取用户名 */
+	strncpy(p_username_len, buff, 2);
+	p_username_len[2] = '\0';
+	username_len = atoi(p_username_len);//得到用户名长度
+	username = (char *)malloc(username_len + 1);
+	if (username == NULL)
+	{
+		My_log("In Retrieve_psw malloc username 失败");
+		return 1;
+	}
+	strncpy(username, buff + 2, username_len);
+	username[username_len] = '\0';//得到了用户名
+	
+	/* 读取密保 */
+	strncpy(p_securiety_len, buff + 2 + username_len, 2);
+	p_securiety_len[2] = '\0';
+	securiety_len = atoi(p_securiety_len);//得到密保长度
+	securiety = (char *)malloc(securiety_len + 1);
+	if (securiety == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Retrieve_psw malloc securiety 失败.");
+		My_log(errorMsg);
+		
+		free(username);
+		return 1;
+	}
+	strncpy(securiety, buff + 2 + username_len + 2, securiety_len);
+	securiety[securiety_len] = '\0';//得到了密保
+	
+	/* 得到新的密码 */
+	strncpy(p_Newpasswd_len, buff + 2 + username_len + 2 + securiety_len, 2);
+	p_Newpasswd_len[2] = '\0';
+	Newpasswd_len = atoi(p_Newpasswd_len);//得到了新密码长度
+	Newpasswd = (char *)malloc(Newpasswd_len + 1);
+	if (Newpasswd == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Retrieve_psw malloc Newpasswd 失败.");
+		My_log(errorMsg);
+		
+		free(username);
+		free(securiety);
+		return 1;
+	}
+	strncpy(Newpasswd, buff + 2 + username_len + 2 + securiety_len + 2, Newpasswd_len);
+	Newpasswd[Newpasswd_len] = '\0';//得到了新密码
+	
+	int isUserExist = 0;
+	isUserAlreadyResiger(username,&isUserExist);
+	if(isUserExist == 0)
+	{	
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s %s %s",__FILE__,__LINE__, "找回密码失败，用户 ", username," 不存在.");
+		My_log(errorMsg);
+		
+		write(sockfd, "133", 4);
+		return 0;
+	}
+	
+	/*0  用户名不存在 1 密保正确 2  密保不正确*/
+	isSecurietyTrue(username, securiety, &IsTrue);//passwd只是作为一个指针传入，并没有 什么实际意义
+																
+	if (IsTrue == 2)//密保错误
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s %s %s",__FILE__,__LINE__, "找回密码失败，用户 ", username," 的密保错误.");
+		My_log(errorMsg);
+		
+		write(sockfd, "132", 4);
+		
+		free(username);
+		free(securiety);
+		return 0;//这里要直接返回了
+	}
+	
+	
+	/*这里就是密保正确了，要回找回成功，并且把新密码更新在数据库里*/
+	
+	/*UPDATE tbl_register_users SET passwd='Newpasswd' WHERE name='username'*/
+	
+	sprintf(szcmd,"%s%s%s%s%s","UPDATE tbl_register_users SET passwd='",Newpasswd,"' WHERE name='" ,username,"'");
+	execCmdToMysql(szcmd);
+
+
+	write(sockfd, "131", 4);
+	
+	free(username);
+	free(securiety);
+	return 0;//这里要直接返回了
+}
+
+/*函数功能：解析了前2个字节判断是发送方A要加接收方B好友的消息，要解析出A,B用户名，并且给B发：A要加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（07）  发送方名字长度（2字节）  发送方名字（A）  接收方名字长度（2字节）  接收方名字（B）
+发送给客户端B的协议：
+类型（41）  请求加好友方A名字长度（2字节） 请求加好友方名字（A）
+
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Add_friend_forward(const char* buff,int sockfd)
+{
+	char *send_username = NULL, *rec_username = NULL;
+	char p_send_username_len[3] = {0}, p_rec_username_len[3] = {0};
+	char send_buff[100] = {0};
+	int send_username_len = 0, rec_username_len = 0;
+	int err = 0, rec_sockfd = 0,  IsUsernameExist = 0;
+	char errorMsg[SERVER_ERROR_MSG_LENGTH] = {0};
+	int OutIsOnline = 0;
+
+	/* 把A的名字取出来 */
+	strncpy(p_send_username_len, buff, 2);
+	p_send_username_len[2] = '\0';
+	send_username_len = atoi(p_send_username_len);//得到了发送方名字长度
+	send_username = (char *)malloc(send_username_len + 1);
+	if (send_username == NULL)
+	{	
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward malloc send_username 失败.");
+		My_log(errorMsg);
+		
+		return 1;
+	}
+	strncpy(send_username, buff + 2, send_username_len);
+	send_username[send_username_len] = '\0';//得到了发送方的名字
+	
+	/* 把B的名字取出来 */
+	strncpy(p_rec_username_len, buff + 2 + send_username_len, 2);
+	p_rec_username_len[2] = '\0';
+	rec_username_len = atoi(p_rec_username_len);//得到了接收方名字长度
+	rec_username = (char *)malloc(rec_username_len + 1);
+	if (rec_username == NULL)
+	{		
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward malloc rec_username 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		return 1;
+	}
+	strncpy(rec_username, buff + 2 + send_username_len + 2, rec_username_len);
+	rec_username[rec_username_len] = '\0';//得到了接收方的名字
+	
+	/* 得到B是否已经注册 */
+	err = isUserAlreadyResiger(rec_username, &IsUsernameExist);
+	if (err == 1)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward 执行 isUserNameExist 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	
+	/* 如果B用户名不存在 */
+	if (IsUsernameExist == 0)//不存在
+	{		
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s %s %s",__FILE__,__LINE__,"添加好友失败，要添加的好友 ", rec_username ," 不存在.");
+		My_log(errorMsg);
+		
+		/* 给A发送要加的B用户名不存在 */
+		write(sockfd,"99",3);
+		
+		free(send_username);
+		free(rec_username);
+		return 0;//直接返回
+	}
+	
+	/* 要加的好友B是存在的，先判断B是否在线 */
+	err = isUserAlreadyOnline(rec_username, &OutIsOnline);
+	if (err == 1)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward 执行 isUserAlreadyOnline 失败.");
+		My_log(errorMsg);
+		
+		return 1;
+	}
+		
+	/* 如果B在线 */
+	if (OutIsOnline == 1)//在线
+	{
+		/* 服务器给B发送有人加自己好友，首先获得B和服务器连接的socketfd */
+		err = getUserSocketFd(rec_username, &rec_sockfd);
+		if (err == 1)
+		{
+			memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+			sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward 执行 getUserSocketFd 失败.");
+			My_log(errorMsg);
+			
+			free(send_username);
+			free(rec_username);
+			return 1;
+		}
+		
+		/* 组建数据包 */
+		memset(send_buff,0,100);
+		send_buff[0] = '4';
+		send_buff[1] = '1';
+		send_buff[2] = strlen(send_username) / 10 + 0x30;
+		send_buff[3] = strlen(send_username) % 10 + 0x30;
+		strcat(send_buff,send_username);
+		
+		write(rec_sockfd, send_buff, strlen(send_buff) + 1);
+	}
+	else if (OutIsOnline == 0)//不在线
+	{
+		/* 组建数据包 */
+		memset(send_buff,0,100);
+		send_buff[0] = '8';
+		send_buff[1] = '0';
+		send_buff[2] = '\0';
+		write(sockfd, send_buff, strlen(send_buff) + 1);
+	}		
+	
+	free(send_username);
+	free(rec_username);
+	return 0;
+}
+
+
+/*函数功能：解析了前2个字节判断是发送方B同意加A好友的信息，要解析出A,B用户名，并且给A发：B同意加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（39）  发送方名字长度（2字节）  发送方名字（B）  接收方名字长度（2字节）  接收方名字（A）
+发送给客户端B的协议：
+类型（43）  同意加好友方（B）名字长度（2字节） 同意加好友方（B）名字
+
+参数：
+char *buff:
+读出来的buff信息，包括了前2个类型字节
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在//这里要不要判断的？
+返回值：0 函数执行成功 1 函数执行失败 
+*/
+int Add_friend_agree(const char* buff)
+{
+	char *send_username = NULL, *rec_username = NULL;
+	char p_send_username_len[3] = {0}, p_rec_username_len[3] = {0};
+	
+	char szcmd[200] = {0};
+	int send_username_len = 0, rec_username_len = 0;
+	int err = 0, rec_sockfd = 0;
+	char errorMsg[SERVER_ERROR_MSG_LENGTH] = {0};
+	
+	/* 解析B的名字 */
+	strncpy(p_send_username_len, buff + 2, 2);
+	p_send_username_len[2] = '\0';
+	send_username_len = atoi(p_send_username_len);//得到了发送方名字长度
+	send_username = (char *)malloc(send_username_len + 1);
+	if (send_username == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_agree malloc send_username 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	strncpy(send_username, buff + 2 + 2, send_username_len);
+	send_username[send_username_len] = '\0';//得到了发送方的名字
+	
+	/* 得到A的名字 */
+	strncpy(p_rec_username_len, buff + 2 + 2 + send_username_len, 2);
+	p_rec_username_len[2] = '\0';
+	rec_username_len = atoi(p_rec_username_len);//得到了接收方名字长度
+	rec_username = (char *)malloc(rec_username_len + 1);
+	if (rec_username == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_forward malloc rec_username 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		return 1;
+	}
+	strncpy(rec_username, buff + 2 + 2 + send_username_len + 2, rec_username_len);
+	rec_username[rec_username_len] = '\0';//得到了接收方的名字
+	
+	
+	/*这里要同时更新tbl_users_friends 表中用户与他好友关系，添加两条
+	"INSERT INTO tbl_users_friends(name,friend_name) VALUES('A','B')";
+	"INSERT INTO tbl_users_friends(name,friend_name) VALUES('B','A')";*/
+	
+	memset(szcmd,0,200);
+	sprintf(szcmd,"%s%s%s%s%s","INSERT INTO tbl_users_friends(name,friend_name) VALUES ('",send_username,"','",rec_username,"')");
+	printf("agree:send_username = %s rec_username= %s %s\n",send_username,rec_username,szcmd);
+	err = execCmdToMysql(szcmd);
+	if (err == 1)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_agree 执行 execCmdToMysql 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	
+	
+	bzero(szcmd, sizeof(szcmd));//要清空
+
+	sprintf(szcmd,"%s%s%s%s%s","INSERT INTO tbl_users_friends(name,friend_name) VALUES ('",rec_username,"','",send_username,"')");
+	printf("agree:send_username = %s rec_username= %s %s\n",send_username,rec_username,szcmd);
+	err = execCmdToMysql(szcmd);
+	if (err == 1)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_agree 执行 execCmdToMysql 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	
+	/* 得到和A的socket连接 */
+	err = getUserSocketFd(rec_username, &rec_sockfd);
+	if (err == 1)
+	{		
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_agree 执行 getUserSocketFd 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	
+	/* 给A回复B同意加自己好友 */
+	write(rec_sockfd, "421", 4);
+	
+	free(send_username);
+	free(rec_username);
+	return 0;
+}
+
+
+/*函数功能：解析了前2个字节判断是发送方B拒绝加A好友的信息，要解析出A,B用户名，并且给A发：B拒绝加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（40）  发送方（B）名字长度（2字节）  发送方名字（B）  接收方（A）名字长度（2字节）  接收方名字（A）
+发送给客户端B的协议：
+类型（42）  拒绝加好友方（B）名字长度（2字节） 拒绝加好友方（B）名字
+
+参数：
+char *buff:
+读出来的buff信息，包括了前2个类型字节
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在//这里要不要判断的？
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Add_friend_refuse(const char* buff)
+{
+	char *send_username = NULL, *rec_username = NULL;
+	char p_send_username_len[3] = {0}, p_rec_username_len[3] = {0};
+	
+	int send_username_len = 0, rec_username_len = 0;
+	int err = 0, rec_sockfd = 0;
+	char errorMsg[SERVER_ERROR_MSG_LENGTH] = {0};
+	
+	/* 给B的名字取出来 */
+	strncpy(p_send_username_len, buff + 2, 2);
+	p_send_username_len[2] = '\0';
+	send_username_len = atoi(p_send_username_len);//得到了发送方名字长度
+	send_username = (char *)malloc(send_username_len + 1);
+	if (send_username == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_refuse malloc send_username 失败.");
+		My_log(errorMsg);
+		return 1;
+	}
+	strncpy(send_username, buff + 2 + 2, send_username_len);
+	send_username[send_username_len] = '\0';//得到了发送方的名字
+	
+	/* 给A的名字取出来 */
+	strncpy(p_rec_username_len, buff + 2 + 2 + send_username_len, 2);
+	p_rec_username_len[2] = '\0';
+	rec_username_len = atoi(p_rec_username_len);//得到了接收方名字长度
+	rec_username = (char *)malloc(rec_username_len + 1);
+	if (rec_username == NULL)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_refuse malloc rec_username 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		return 1;
+	}
+	strncpy(rec_username, buff + 2 + 2 + send_username_len + 2, rec_username_len);
+	rec_username[rec_username_len] = '\0';//得到了接收方的名字
+	
+	/*得到A的socketfd*/
+	err = getUserSocketFd(rec_username, &rec_sockfd);
+	if (err == 1)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In Add_friend_refuse 执行 getUserSocketFd 失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		return 1;
+	}
+	
+	write(rec_sockfd, "420", 4);
+	
+	free(send_username);
+	free(rec_username);
+	return 0;
+}
+
+
+

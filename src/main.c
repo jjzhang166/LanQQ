@@ -55,9 +55,33 @@ void* PthreadReadClientMsg(void* arg)
 			}
 			
 			/* 用户登录,消息头为02 */
-			if (strncmp(szMode, "02", 2) == 0)
+			else if (strncmp(szMode, "02", 2) == 0)
 			{
 				AnalyLogin(szBuff + 2, nSocketFd);
+			}
+			
+			/*找回密码03 */
+			else if (strncmp(szMode, "03", 2) == 0)
+			{
+				Retrieve_psw(szBuff+2,nSocketFd);
+			}
+			
+			/* A申请添加B好友 */
+			else if (strncmp(szMode, "07", 2) == 0)
+			{
+				Add_friend_forward(szBuff + 2, nSocketFd);	
+			}
+			
+			/* B同意A添加好友的信息 */
+			else if (strncmp(szMode, "39", 2) == 0)
+			{
+				Add_friend_agree(szBuff);
+			}
+			
+			/* B拒绝A添加好友的信息 */
+			else if (strncmp(szMode, "40", 2) == 0)
+			{
+				Add_friend_refuse(szBuff);
 			}
 			
 			/* 超级用户登录,消息头为22 */

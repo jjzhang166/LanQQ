@@ -54,4 +54,17 @@ OutIsOnline 输出是否在线，0 没有在线，1 在线
 返回值：0 函数执行成功 1 函数执行失败 */
 int isUserAlreadyOnline(const char* InUserName, int* OutIsOnline);
 
+/*函数功能：判断密保是否正确，
+参数：InUserName 用户名
+Insecuriety输入的密保
+OutIsTrue 密保是否正确 0  用户名不存在 1 密保正确 2  密保不正确
+返回值：0 函数执行成功 1 函数执行失败 */
+int isSecurietyTrue(const char* InUserName, const char* Insecuriety, int* OutIsTrue);
+
+/*函数功能：根据用户名把该用户服务器与客户端的的socketfd找出来
+参数：InUserName 输入的用户名
+OutSocketFd 返回通信的文件描述符
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserSocketFd(const char* InUserName, int* OutSocketFd);
+
 #endif

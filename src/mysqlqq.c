@@ -452,6 +452,128 @@ int isUserAlreadyOnline(const char* InUserName, int* OutIsOnline)
 	mysql_close(&my_connection);
 	return 0;
 }
+/*函数功能：判断密保是否正确，
+参数：InUserName 用户名
+Insecuriety输入的密保
+OutIsTrue 密保是否正确 0  用户名不存在 1 密保正确 2  密保不正确
+返回值：0 函数执行成功 1 函数执行失败 */
+int isSecurietyTrue(const char* InUserName, const char* Insecuriety, int* OutIsTrue)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[200] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	int count = 0;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{	
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isSecurietyTrue-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT securiety, passwd FROM tbl_register_users WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{		
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isSecurietyTrue-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+	if ((row = mysql_fetch_row(result)))
+	{
+		count++;
+	}
+	
+	if (count == 0)
+	{
+		/* 用户名不存在 */
+		*OutIsTrue = 0;
+	}
+	else if (strncmp(Insecuriety, row[0], 20) == 0)
+	{
+		/* 密保正确 */
+		*OutIsTrue = 1;
+
+	}
+	else
+	{
+		/* 密保错误 */
+		*OutIsTrue = 2;
+	}
+
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+/*函数功能：根据用户名把该用户服务器与客户端的的socketfd找出来
+参数：InUserName 输入的用户名
+OutSocketFd 返回通信的文件描述符
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserSocketFd(const char* InUserName, int* OutSocketFd)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[200] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserSocketFd-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT socketfd FROM tbl_register_users WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserSocketFd-->mysql_query: exec cmd faile.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+	row = mysql_fetch_row(result);
+
+	/* 把字符串转换为int数数值 */
+	*OutSocketFd = atoi(row[0]);
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
 
 
 

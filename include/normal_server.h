@@ -47,4 +47,90 @@ int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时�
 
 int AnalyLogin(const char* buff,int sockfd);
 
+/*函数功能：解析了前2个字节判断是要找回密码的信息的信息，根据客户端发送的信息解析出密保正确与否，正确就发送给他密保
+每次return 都要free
+
+接收客户端信息的协议：
+类型（03）  发送方名字长度（2字节）  发送方名字    密保长度（2字节）  密保
+发送给客户端的协议：
+找回成功 131
+找回失败 132
+
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int isSecurietyTrue(char* InUserName,char* Insecuriety,int* OutIsTrue,char* OutPasswd);判断密保是否正确，如果正确直接把密码返回
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Retrieve_psw(const char* buff,const int sockfd);
+
+/*函数功能：解析了前2个字节判断是发送方A要加接收方B好友的消息，要解析出A,B用户名，并且给B发：A要加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（07）  发送方名字长度（2字节）  发送方名字（A）  接收方名字长度（2字节）  接收方名字（B）
+发送给客户端B的协议：
+类型（41）  请求加好友方A名字长度（2字节） 请求加好友方名字（A）
+
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Add_friend_forward(const char* buff,int sockfd);
+
+/*函数功能：解析了前2个字节判断是发送方B同意加A好友的信息，要解析出A,B用户名，并且给A发：B同意加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（39）  发送方名字长度（2字节）  发送方名字（B）  接收方名字长度（2字节）  接收方名字（A）
+发送给客户端B的协议：
+类型（43）  同意加好友方（B）名字长度（2字节） 同意加好友方（B）名字
+
+参数：
+char *buff:
+读出来的buff信息，包括了前2个类型字节
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在//这里要不要判断的？
+返回值：0 函数执行成功 1 函数执行失败 
+*/
+int Add_friend_agree(const char* buff);
+
+/*函数功能：解析了前2个字节判断是发送方B同意加A好友的信息，要解析出A,B用户名，并且给A发：B同意加你好友
+每次return 都要free
+
+接收客户端A信息的协议：
+类型（39）  发送方名字长度（2字节）  发送方名字（B）  接收方名字长度（2字节）  接收方名字（A）
+发送给客户端B的协议：
+类型（43）  同意加好友方（B）名字长度（2字节） 同意加好友方（B）名字
+
+参数：
+char *buff:
+读出来的buff信息，包括了前2个类型字节
+
+使用的数据库函数：
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isAlreadyBeDelete(char* InUserName,int* OutIsDelete);判断用户是否已结被删除过，
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名是否存在 1,存在  0，不存在//这里要不要判断的？
+返回值：0 函数执行成功 1 函数执行失败 */
+int Add_friend_refuse(const char* buff);
+
 #endif
