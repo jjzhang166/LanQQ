@@ -81,4 +81,27 @@ OutGroupNums 返回的群组的个数
 返回值：0 函数执行成功 1 函数执行失败 */
 int getUserGroups(const char* InUserName, char OutGroupsName[][20], int* OutGroupNums);
 
+/*函数功能：判断用户是否被禁言,如果被禁言的话，直接可以把禁言的时间查出来
+参数：InUserName 输入的用户名
+OutIsGag 输出是否被禁言，0 没有被禁言，1 被禁言
+OutgagMinutes 被禁言的时间
+返回值：0 函数执行成功 1 函数执行失败 */
+int isUserByGag(const char* InUserName, int* OutIsGag, int* OutgagMinutes);
+
+/*函数功能：判断输入的字符串是否含有敏感词
+参数：
+InWords 聊天的一句话
+OutIsSensWord 是否含有敏感词 0 含有 1 没有
+返回值：0 函数执行成功 1 函数执行失败 */
+int isSensitiveWords(const char* InWords, int* OutIsSensWord);
+
+/*函数功能：把含有敏感词的字符串改造
+参数：
+InOutWords 聊天的一句话,直接在原来的字符串上修改
+OutChangeWord 改造之后的一句话
+例子：原句：你是，滚蛋吧
+改造：你是，**吧
+返回值：0 函数执行成功 1 函数执行失败 */
+int changeSensitiveWords(char* InOutWords);
+
 #endif

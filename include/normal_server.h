@@ -133,4 +133,30 @@ int isUserNameExist(char* InUserName,int* OutIsUsernameExist);//判断用户名�
 返回值：0 函数执行成功 1 函数执行失败 */
 int Add_friend_refuse(const char* buff);
 
+/*函数功能：解析了前2个字节判断是要私聊的信息，发送给客户端消息时要根据对方是否在线，1，在线（在登陆时已经更新了在线信息）就直接根据
+要接收数据方姓名从数据库中取出它的sockfd，再根据此sockfd将信息发送给他，2，不在线，实时更新，将数据库中该用户的离线消息字段置1，
+将消息保存在本地文件中（文件名：要接收方用户名.txt）  每次return 都要free
+
+接收客户端信息的协议：
+类型（04）  发送方名字长度（2字节）  发送方名字    接收方名字长度（2字节）   接收方名字  信息长度（2字节）   信息
+发送给客户端的协议：
+类型（14）  发送方名字长度（2字节）  发送方名字  信息长度（2字节）   信息
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int isSensitiveWords(char* InWords,int* OutIsSensWord);判断输入的字符串是否含有敏感词，若有敏感词要改造该条信息
+int isUserByGag(char* InUserName,int* OutIsGag,int* OutgagMinutes);判断用户是否被禁言
+int isUserAlreadyOnline(char* InUserName,int* OutIsOnline);根据用户名判断用户是否在线
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+
+如果要接收消息方的用户是被永远删除的，那么服务器会把该消息发送给他的每一个朋友，协议是**（2字节） 所删好友名字长度（2字节） 所删好友名字  那么每一个客户端就会把该人从
+好友列表中去除，所以好友列表的好友都是存在于数据库中的
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Private_chat(const char* buff, int sockfd);
+
 #endif

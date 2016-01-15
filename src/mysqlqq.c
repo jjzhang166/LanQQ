@@ -695,3 +695,238 @@ int getUserGroups(const char* InUserName, char OutGroupsName[][20], int* OutGrou
 	return 0;
 }
 
+
+/*函数功能：判断用户是否被禁言,如果被禁言的话，直接可以把禁言的时间查出来
+参数：InUserName 输入的用户名
+OutIsGag 输出是否被禁言，0 没有被禁言，1 被禁言
+OutgagMinutes 被禁言的时间
+返回值：0 函数执行成功 1 函数执行失败 */
+int isUserByGag(const char* InUserName, int* OutIsGag, int* OutgagMinutes)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	int count = 0;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{		
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserByGag-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT gag_minutes FROM tbl_gag_users WHERE gag_name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"isUserByGag-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	while ((row = mysql_fetch_row(result)))
+	{
+		*OutgagMinutes = atoi(row[0]);
+		count++;
+	}
+
+	if (count == 0)
+	{
+		/* 没有被禁言 */
+		*OutIsGag = 0;
+		*OutgagMinutes = 0;
+	}
+	else
+	{
+		/* 被禁言 */
+		*OutIsGag = 1;
+	}
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+/*函数功能：判断输入的字符串是否含有敏感词
+参数：
+InWords 聊天的一句话
+OutIsSensWord 是否含有敏感词 0 含有 1 没有
+返回值：0 函数执行成功 1 函数执行失败 */
+int isSensitiveWords(const char* InWords, int* OutIsSensWord)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char OutSensWords[20][20];
+	int OutWordNums = 0;
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getSensitiveWords-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, "SELECT * FROM tbl_sensitive_words");
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getSensitiveWords-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	/* 把所有的敏感词查出来*/
+	OutWordNums = 0;
+	while ((row = mysql_fetch_row(result)))
+	{
+		strncpy(OutSensWords[OutWordNums], row[0], 20);
+		(OutWordNums) = (OutWordNums)+1;
+	}
+
+	int i = 0, j = 0;
+	int nCount = 0;
+
+	/* 每一个敏感词都要判断 */
+	for (i = 0; i < OutWordNums; i++)
+	{
+		for (j = 0; j < strlen(InWords); j++)
+		{
+			if (InWords[j] == OutSensWords[i][0])
+			{
+				if (strncmp(InWords + j, OutSensWords[i], strlen(OutSensWords[i])) == 0)
+				{
+					nCount++;
+					break;
+				}
+
+			}
+
+		}
+		if (nCount != 0)
+		{
+			break;
+		}
+	}
+	if (nCount == 0)
+	{
+		/* 没有含有敏感词 */
+		*OutIsSensWord = 1;
+	}
+	else
+	{
+		/* 含有敏感词 */
+		*OutIsSensWord = 0;
+	}
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+
+
+/*函数功能：把含有敏感词的字符串改造
+参数：
+InOutWords 聊天的一句话,直接在原来的字符串上修改
+OutChangeWord 改造之后的一句话
+例子：原句：你是，滚蛋吧
+改造：你是，**吧
+返回值：0 函数执行成功 1 函数执行失败 */
+int changeSensitiveWords(char* InOutWords)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char OutSensWords[20][20];
+	int OutWordNums = 0;
+	int i = 0, j = 0;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+	
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getSensitiveWords-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, "SELECT * FROM tbl_sensitive_words");
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getSensitiveWords-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	/* 把所有的敏感词查出来*/
+	OutWordNums = 0;
+	while ((row = mysql_fetch_row(result)))
+	{
+		strncpy(OutSensWords[OutWordNums], row[0], 20);
+		(OutWordNums) = (OutWordNums)+1;
+	}
+
+	/* 每一个敏感词都要判断 */
+	for (i = 0; i < OutWordNums; i++)
+	{
+		for (j = 0; j < strlen(InOutWords); j++)
+		{
+			if (InOutWords[j] == OutSensWords[i][0])
+			{
+				if (strncmp(InOutWords + j, OutSensWords[i], strlen(OutSensWords[i])) == 0)
+				{
+					strncpy(InOutWords + j, "****************", strlen(OutSensWords[i]));
+				}
+
+			}
+
+		}
+	}
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
+

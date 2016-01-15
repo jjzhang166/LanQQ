@@ -1162,3 +1162,219 @@ int Add_friend_refuse(const char* buff)
 
 
 
+/*函数功能：解析了前2个字节判断是要私聊的信息，发送给客户端消息时要根据对方是否在线，1，在线（在登陆时已经更新了在线信息）就直接根据
+要接收数据方姓名从数据库中取出它的sockfd，再根据此sockfd将信息发送给他，2，不在线，实时更新，将数据库中该用户的离线消息字段置1，
+将消息保存在本地文件中（文件名：要接收方用户名.txt）  每次return 都要free
+
+接收客户端信息的协议：
+类型（04）  发送方名字长度（2字节）  发送方名字    接收方名字长度（2字节）   接收方名字  信息长度（2字节）   信息
+发送给客户端的协议：
+类型（14）  发送方名字长度（2字节）  发送方名字  信息长度（2字节）   信息
+参数：
+sockfd:
+发送方的sockfd，用于与服务器之间收发数据
+
+使用的数据库函数：
+int isSensitiveWords(char* InWords,int* OutIsSensWord);判断输入的字符串是否含有敏感词，若有敏感词要改造该条信息
+int isUserByGag(char* InUserName,int* OutIsGag,int* OutgagMinutes);判断用户是否被禁言
+int isUserAlreadyOnline(char* InUserName,int* OutIsOnline);根据用户名判断用户是否在线
+int getUserSocketFd(char* InUserName,int* OutSocketFd);根据用户名把该用户服务器与客户端的的socketfd找出来
+int isUserSocketfdUsed(char* InUserName,int* OutIsSocketfdUsed);每次写的时候都要判断该sockfd是否被占用
+int execCmdToMysql(char* InExecCmd);
+
+如果要接收消息方的用户是被永远删除的，那么服务器会把该消息发送给他的每一个朋友，协议是**（2字节） 所删好友名字长度（2字节） 所删好友名字  那么每一个客户端就会把该人从
+好友列表中去除，所以好友列表的好友都是存在于数据库中的
+返回值：0 函数执行成功 1 函数执行失败 */
+
+int Private_chat(const char* buff, int sockfd)
+{
+	char *send_username = NULL, *rec_username = NULL, *imfor = NULL;
+	char p_send_user_len[3] = {0}, p_rec_user_len[3] = {0}, p_imfor_len[3] = {0};//长度信息两个字节还要加个'\0'
+
+	char sens_log[30] = { 0 };
+	char szcmd[100] = { 0 };
+	char send_buff[200] = { 0 };
+	int fd = 0;//存离线消息
+	char filename[30] = { 0 };//存放离线消息的文件的名字
+	int rec_sockfd = 0;
+	int send_usr_len = 0, rec_usr_len = 0, imfor_len = 0;
+	int   OutIsSensWord = 0, rec_IsOnline = 0;
+	char errorMsg[SERVER_ERROR_MSG_LENGTH] = {0};
+
+	/* 获得A的用户名 */
+	strncpy(p_send_user_len, buff, 2);
+	p_send_user_len[2] = '\0';
+	send_usr_len = atoi(p_send_user_len);//发送方名字长度
+	send_username = (char*)malloc(send_usr_len + 1);
+	strncpy(send_username, buff + 2, send_usr_len);
+	send_username[send_usr_len] = '\0';//得到发送方名字
+
+	/* 获得B的用户名 */
+	strncpy(p_rec_user_len, buff + 2 + send_usr_len, 2);
+	p_rec_user_len[2] = '\0';
+	rec_usr_len = atoi(p_rec_user_len);//得到接收方名字长度
+	rec_username = (char*)malloc(rec_usr_len + 1);
+	strncpy(rec_username, buff + 2 + send_usr_len + 2, rec_usr_len);
+	rec_username[rec_usr_len] = '\0';//得到接收方名字
+
+	/* 得到发送的信息 */
+	strncpy(p_imfor_len, buff + 2 + send_usr_len + 2 + rec_usr_len, 2);
+	imfor_len = atoi(p_imfor_len);//得到信息长度
+	imfor = (char *)malloc(imfor_len + 1);
+	strncpy(imfor, buff + 2 + send_usr_len + 2 + rec_usr_len + 2, imfor_len);//这里要不要imfor_len+1？等待调试
+	imfor[imfor_len] = '\0';
+	
+	/* 获取系统当前的时间 */
+	time_t timep;
+	time (&timep);
+	
+	/* 首先写到A的聊天文件中去 */
+	char filename1[100] = {0};
+	int fd1 = 0,fd2 = 0;
+	sprintf(filename1,"%s%s%s", "../offlineMsgFile/",rec_username,"chat.txt");
+	
+	fd1 = open(filename1,O_RDWR);
+	if (fd1 < 0)
+	{
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"打开消息文本失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		free(imfor);
+		return 1;
+	}
+	
+	/** 设置写文件的位置 */
+	lseek(fd1,0,SEEK_END);
+	char lineMsg1[100] = {0};
+	
+	sprintf(lineMsg1,"%s%s%s%s%s",asctime(gmtime(&timep)),"receive from ",send_username,": ",imfor);					
+	write(fd1, lineMsg1, strlen(lineMsg1));//把聊天消息写到文件中
+	write(fd1, "\n",1);//把聊天消息写到文件中
+	close(fd1);
+	
+	/* 写到B的聊天文件中去 */
+	memset(lineMsg1,0,100);
+	sprintf(filename1,"%s%s%s", "../offlineMsgFile/",send_username,"chat.txt");
+	fd2 = open(filename1,O_RDWR);
+	if (fd1 < 0)
+	{		
+		memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"打开消息文本失败.");
+		My_log(errorMsg);
+		
+		free(send_username);
+		free(rec_username);
+		free(imfor);
+		return 1;
+	}
+	/** 设置写文件的位置 */
+	lseek(fd2,0,SEEK_END);
+	sprintf(lineMsg1,"%s%s%s%s%s",asctime(gmtime(&timep)),"send to  ",rec_username,": ",imfor);	
+	write(fd2, lineMsg1, strlen(lineMsg1));//把离线消息写到文件中
+	write(fd2, "\n",1);//把离线消息写到文件中
+	close(fd2);
+	
+	//单聊的时候，不会检查是否被禁言
+	{
+		/* 是否有敏感词 */
+		isSensitiveWords(imfor, &OutIsSensWord);
+
+		if (OutIsSensWord == 0)//有敏感词
+		{
+			sprintf(sens_log, "%s%s", send_username, "发送的信息有敏感词");//记录谁发的信息有敏感词
+			memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+			sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,sens_log);
+			My_log(errorMsg);
+			
+			/* 把敏感词去掉之后，再过滤 */
+			changeSensitiveWords(imfor);
+		}
+	
+		/* 扎到接收方的socketfd */
+		getUserSocketFd(rec_username, &rec_sockfd);
+		
+		isUserAlreadyOnline(rec_username, &rec_IsOnline);//要先检查下接收方是否在线
+	
+		if (rec_IsOnline == 0)//接收方没有在线
+		{	
+			/*UPDATE tbl_register_users SET isOfflineMsg=1 WHERE name='rec_username' */
+			sprintf(szcmd, "%s%s%s%s", "UPDATE tbl_register_users SET isOfflineMsg=1"," WHERE name='", rec_username, "'");
+			printf("%s\n",szcmd);
+			execCmdToMysql(szcmd);
+				
+			sprintf(filename,"%s%s%s", "../offlineMsgFile/",rec_username,".txt");
+			
+			/* 以读写的方式打开这个文件 */
+			fd = open(filename,O_RDWR);
+			if (fd < 0)
+			{				
+				memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+				sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"打开离线文本失败");
+				My_log(errorMsg);
+				
+				free(send_username);
+				free(rec_username);
+				free(imfor);
+				return 1;
+			}
+			
+			/** 设置写文件的位置 */
+			lseek(fd,0,SEEK_END);
+			
+			char lineMsg[100] = {0};
+			
+			lineMsg[0] = send_usr_len/10+ 0x30;
+			lineMsg[1] = send_usr_len%10+ 0x30;
+			strcat(lineMsg,send_username);
+			lineMsg[2+send_usr_len] = strlen(imfor)/10+ 0x30;
+			lineMsg[3+send_usr_len] = strlen(imfor)%10+ 0x30;
+			
+			strcat(lineMsg,imfor);
+			
+			write(fd, lineMsg, strlen(lineMsg));//把离线消息写到文件中
+			write(fd, "\n",1);//把离线消息写到文件中
+			close(fd);
+			free(send_username);
+			free(rec_username);
+			free(imfor);
+			return 0;//直接返回，没有在线就不要发消息了
+		}
+		else if (rec_IsOnline == 1)//接收方在线
+		{
+			send_buff[0] = '1';
+			send_buff[1] = '4';
+			
+			send_buff[2] = strlen(send_username) / 10 + 0x30;
+			send_buff[3] = strlen(send_username) % 10 + 0x30;
+			
+			strcat(send_buff, send_username);
+			
+			send_buff[4 + send_usr_len] = rec_usr_len / 10 + 0x30;
+			send_buff[5 + send_usr_len] = rec_usr_len % 10 + 0x30;
+			
+			strcat(send_buff, rec_username);
+			
+			
+			send_buff[6 + send_usr_len+rec_usr_len] = imfor_len / 10 + 0x30;
+			send_buff[7 + send_usr_len+rec_usr_len] = imfor_len % 10 + 0x30;
+			
+			strcat(send_buff, imfor);
+
+			write(rec_sockfd, send_buff, strlen(send_buff) + 1);
+			
+			//printf("baowen:%s\n",send_buff);
+
+			/*此时发送成功了 *send_username,*rec_username,*imfor;*/
+			free(send_username);
+			free(rec_username);
+			free(imfor);
+			return 0;
+		}
+	}
+	return 0;
+}
+
+

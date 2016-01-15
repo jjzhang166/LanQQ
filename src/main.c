@@ -84,6 +84,13 @@ void* PthreadReadClientMsg(void* arg)
 				Add_friend_refuse(szBuff);
 			}
 			
+			/* 单聊的信息 */
+			else if (strncmp(szMode, "04", 2) == 0)
+			{
+				Private_chat(szBuff+2,nSocketFd);
+				
+			}
+			
 			/* 超级用户登录,消息头为22 */
 			if (strncmp(szMode, "22", 2) == 0)
 			{
