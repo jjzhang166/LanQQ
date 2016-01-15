@@ -576,4 +576,122 @@ int getUserSocketFd(const char* InUserName, int* OutSocketFd)
 }
 
 
+/*函数功能：根据用户名把该用户所有的好友提取出来
+参数：InUserName 输入的用户名
+OutFriendsName 返回的用户名，放入一个数组中
+OutFriendNums 返回的好友的个数
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserFriends(const char* InUserName, char OutFriendsName[][20], int* OutFriendNums)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserFriends-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT friend_name FROM tbl_users_friends WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{	
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserFriends-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	/* 把用户的所有的好友查出来 */
+	*OutFriendNums = 0;
+	while ((row = mysql_fetch_row(result)))
+	{
+		strncpy(OutFriendsName[*OutFriendNums], row[0], 20);
+		(*OutFriendNums) = (*OutFriendNums) + 1;
+	}
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	
+	return 0;
+}
+
+
+/*函数功能：根据用户名把该用户所有的群提取出来
+参数：InUserName 输入的用户名
+OutGroupsName 返回的用户的群名，放入一个数组中
+OutGroupNums 返回的群组的个数
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserGroups(const char* InUserName, char OutGroupsName[][20], int* OutGroupNums)
+{
+	int nRet = 0;
+	MYSQL my_connection;
+	char szCmd[100] = { 0 };
+	MYSQL_RES*  result;
+	MYSQL_ROW row;
+	char errorMsg[MYSQL_ERROR_MSG_LENGTH] = {0};
+	
+	/* 初始化数据库 */
+	mysql_init(&my_connection);
+
+	/* 连接数据库 */
+	if (!mysql_real_connect(&my_connection, "localhost", "root", "passwd", "db_bsqq", 0, NULL, 0))
+	{	
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserGroups-->mysql_real_connect: connect mysql failed.");
+		mysqlLOG(errorMsg);
+
+		return 1;
+	}
+
+	/* 组合查找命令 */
+	sprintf(szCmd, "%s%s%s", "SELECT group_name FROM tbl_users_groups WHERE name='", InUserName, "'");
+
+	/* 执行命令 */
+	nRet = mysql_query(&my_connection, szCmd);
+	if (0 != nRet)
+	{
+		memset(errorMsg,0,MYSQL_ERROR_MSG_LENGTH);
+		sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"getUserGroups-->mysql_query: exec cmd failed.");
+		mysqlLOG(errorMsg);
+		
+		mysql_close(&my_connection);
+		return 1;
+	}
+
+	/* 把查询到的数据取出来 */
+	result = mysql_store_result(&my_connection);
+
+	/* 把用户的所有的好友查出来 */
+	*OutGroupNums = 0;
+	while ((row = mysql_fetch_row(result)))
+	{
+		strncpy(OutGroupsName[*OutGroupNums], row[0], 20);
+		(*OutGroupNums) = (*OutGroupNums) + 1;
+	}
+
+	/* 释放空间，关闭与数据库的连接 */
+	mysql_free_result(result);
+	mysql_close(&my_connection);
+	return 0;
+}
 

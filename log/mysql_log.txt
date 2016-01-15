@@ -27,3 +27,9 @@ src/mysqlqq.c 545: getUserSocketFd-->mysql_real_connect: connect mysql failed.
 src/mysqlqq.c 545: getUserSocketFd-->mysql_real_connect: connect mysql failed.
 2016-01-13:22:17:10:
 src/mysqlqq.c 545: getUserSocketFd-->mysql_real_connect: connect mysql failed.
+2016-01-14:13:52:07:
+src/mysqlqq.c 74: exec cmd failed(INSERT INTO tbl_users_friends(name,friend_name) VALUES ('qq2','qq1')).
+2016-01-14:16:53:08:
+src/mysqlqq.c 74: exec cmd failed(INSERT INTO tbl_users_friends(name,friend_name) VALUES ('qq2','qq1')).
+2016-01-14:17:21:51:
+src/mysqlqq.c 660: getUserGroups-->mysql_real_connect: connect mysql failed.

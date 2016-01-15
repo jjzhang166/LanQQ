@@ -67,4 +67,18 @@ OutSocketFd 返回通信的文件描述符
 返回值：0 函数执行成功 1 函数执行失败 */
 int getUserSocketFd(const char* InUserName, int* OutSocketFd);
 
+/*函数功能：根据用户名把该用户所有的好友提取出来
+参数：InUserName 输入的用户名
+OutFriendsName 返回的用户名，放入一个数组中
+OutFriendNums 返回的好友的个数
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserFriends(const char* InUserName, char OutFriendsName[][20], int* OutFriendNums);
+
+/*函数功能：根据用户名把该用户所有的群提取出来
+参数：InUserName 输入的用户名
+OutGroupsName 返回的用户的群名，放入一个数组中
+OutGroupNums 返回的群组的个数
+返回值：0 函数执行成功 1 函数执行失败 */
+int getUserGroups(const char* InUserName, char OutGroupsName[][20], int* OutGroupNums);
+
 #endif

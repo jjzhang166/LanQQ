@@ -398,17 +398,20 @@ int AnalyLogin(const char* buff,int sockfd)
 			/*UPDATE tbl_register_users SET socketfd=sockfd ,is_online=1 WHERE name='username' */
 			sprintf(szcmd,"%s%d%s%s%s","UPDATE tbl_register_users SET socketfd=",sockfd,",is_online=1 WHERE name='",username,"'");
 			execCmdToMysql(szcmd);
-#if 0			
+			
 			/*要把该用户的所有好友和群提取出来发送给该用户*/
-			char OutFriendsName[50][20];
-			char OutGroupsName[50][20];//先默认定义这么大的二维数组用于存好友和群
-			int OutGroupNums, OutFriendNums;
+			char OutFriendsName[100][20] = {0};
+			char OutGroupsName[50][20] = {0};//先默认定义这么大的二维数组用于存好友和群
+			int OutGroupNums = 0, OutFriendNums = 0;
 			
 			/* 得到用户的所有的好友 */
 			err = getUserFriends(username, OutFriendsName, &OutFriendNums);
 			if (err == 1)
-			{
-				My_log("In AnalyLogin exec getUserFriends error");
+			{	
+				memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+				sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In AnalyLogin exec getUserFriends error.");
+				My_log(errorMsg);
+
 				return 1;
 			}
 			
@@ -416,67 +419,78 @@ int AnalyLogin(const char* buff,int sockfd)
 			err = getUserGroups(username, OutGroupsName, &OutGroupNums);
 			if (err == 1)
 			{
-				My_log("In AnalyLogin exec getUserGroups error");
+				memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+				sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In AnalyLogin exec getUserGroups error.");
+				My_log(errorMsg);
+
 				return 1;
 			}
 			
-			char send_buff[80];
+			char send_buff[200] = {0};
 			int i = 0;
 			
 			/* 把用户的所有好友的信息发送给用户 */
 			for (i = 0; i < OutFriendNums; i++)
 			{
-				bzero(send_buff, sizeof(send_buff));
-				
-			
-				
-				strncpy(send_buff,"18",2);
-				send_buff[2] = strlen(OutFriendsName[i]) / 10 + 0x30;
-				send_buff[3] = strlen(OutFriendsName[i]) % 10 + 0x30;
-				strcat(send_buff,OutFriendsName[i]);
-				
-				/* 判断他们之间的socket是否被占用 */
-				isUserSocketfdUsed(username, &OutIsSocketfdUsed);//1被占用
-				while (OutIsSocketfdUsed == 1)
+				/* 判断该用户是否在线 */
+				int isUserOnline = 0;
+				err = isUserAlreadyOnline(OutFriendsName[i], &isUserOnline);
+				if (err == 1)
 				{
-					isUserSocketfdUsed(username, &OutIsSocketfdUsed);
-					usleep(100000);//等待0.1秒
+					memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+					sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In AnalyLogin 执行 isUserAlreadyOnline 失败.");
+					My_log(errorMsg);
+					return 1;
 				}
 				
+				bzero(send_buff, sizeof(send_buff));
+				
+				if (isUserOnline == 1)//在线
+				{
+					strncpy(send_buff,"181",3);				
+				}
+				else if (isUserOnline == 0)//不在线
+				{
+					strncpy(send_buff,"182",3);	
+				}
+				
+				send_buff[3] = strlen(OutFriendsName[i]) / 10 + 0x30;
+				send_buff[4] = strlen(OutFriendsName[i]) % 10 + 0x30;
+				strcat(send_buff,OutFriendsName[i]);
 				/* 给用户发送好友列表 */
 				err = write(sockfd, send_buff, strlen(send_buff)+1);
 				if (err == -1)
 				{
-					My_log("In AnalyLogin write User's friend error");
+					memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+					sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In AnalyLogin write User's friend error.");
+					My_log(errorMsg);
+
 					return 1;
 				}
 				usleep(200000);
 			}
+			/* 把用户的群发给该用户 */
 			for (i = 0; i < OutGroupNums; i++)
 			{
 				bzero(send_buff, sizeof(send_buff));
-				
 				
 				strncpy(send_buff,"20",2);
 				send_buff[2] = strlen(OutGroupsName[i]) / 10 + 0x30;
 				send_buff[3] = strlen(OutGroupsName[i]) % 10 + 0x30;
 				strcat(send_buff,OutGroupsName[i]);
 				
-				isUserSocketfdUsed(username, &OutIsSocketfdUsed);//1被占用
-				while (OutIsSocketfdUsed == 1)
-				{
-					isUserSocketfdUsed(username, &OutIsSocketfdUsed);
-					sleep(0.1);//等待0.1秒
-				}
-				
 				err = write(sockfd, send_buff, strlen(send_buff)+1);
 				if (err == -1)
 				{
-					My_log("In AnalyLogin write User's group error");
+					memset(errorMsg,0,SERVER_ERROR_MSG_LENGTH);
+					sprintf(errorMsg,"%s %d: %s",__FILE__,__LINE__,"In AnalyLogin write User's group error.");
+					My_log(errorMsg);
+
 					return 1;
 				}	
 				usleep(200000);
 			}
+#if 0			
 			/*发完了该登陆用户的好友和群消息，如果该用户有离线消息要给该用户发送离线消息*/
 			/**************/
 			/*发完了离线消息*/
